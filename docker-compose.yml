@@ -1,15 +1,19 @@
 version: "3"
+x-aws-vpc: "vpc-04ada9ed412359124"
+# x-aws-cluster: "haystack"
+# x-aws-loadbalancer: "haystack-lbv2"
 services:
   haystack-api:
-    build:
-      context: .
-      dockerfile: Dockerfile
+    # build:
+    #   context: .
+    #   dockerfile: Dockerfile
     image: "deepset/haystack-cpu:latest"
+
     # Mount custom Pipeline YAML and custom Components.
     # volumes:
     #   - ./rest_api/pipeline:/home/user/rest_api/pipeline
-    ports:
-      - 8000:8000
+    # ports:
+    #   - 8000:8000
     restart: on-failure
     environment:
       # See rest_api/pipelines.yaml for configurations of Search & Indexing Pipeline.
@@ -18,26 +22,62 @@ services:
       - CONCURRENT_REQUEST_PER_WORKER
     depends_on:
       - elasticsearch
+    logging:
+      driver: "awslogs"
+      options:
+       awslogs-region: "us-east-1"
+       awslogs-group: "haystack"
+       awslogs-create-group: "true"
+       awslogs-stream-prefix: "haystack-dev-log"
     command: "/bin/bash -c 'sleep 10 && gunicorn rest_api.application:app -b 0.0.0.0 -k uvicorn.workers.UvicornWorker --workers 8 --timeout 180'"
   elasticsearch:
     # This will start an empty elasticsearch instance (so you have to add your documents yourself)
-    #image: "elasticsearch:7.9.2"
+    image: "elasticsearch:7.9.2"
     # If you want a demo image instead that is "ready-to-query" with some indexed articles
     # about countries and capital cities from Wikipedia:
-    image: "deepset/elasticsearch-countries-and-capitals"
-    ports:
-      - 9200:9200
+    # image: "deepset/elasticsearch-countries-and-capitals"
+    # ports:
+    #   - 9200:9200
+    deploy:
+      resources:
+        limits:
+          cpus: '2'
+          memory: 8192M
     restart: on-failure
+    logging:
+      driver: "awslogs"
+      options:
+       awslogs-region: "us-east-1"
+       awslogs-group: "haystack"
+       awslogs-create-group: "true"
+       awslogs-stream-prefix: "haystack-dev-log"
+    # healthcheck:
+    #   # test: ["CMD", "curl", "-f", "http://localhost/_cat/health"]
+    #   # test: ["CMD", "echo hi || exit 0"]
+    #   test: [ "echo hi || exit 0" ]
+    #   interval: 1m30s
+    #   timeout: 10s
+    #   retries: 3
+    #   start_period: 40s
     environment:
       - discovery.type=single-node
   ui:
-    build:
-      context: ui
-      dockerfile: Dockerfile
+    # build:
+    #   context: ui
+    #   dockerfile: Dockerfile
     image: "deepset/haystack-streamlit-ui:latest"
     ports:
       - 8501:8501
     restart: on-failure
+    depends_on:
+      - haystack-api
+    logging:
+      driver: "awslogs"
+      options:
+       awslogs-region: "us-east-1"
+       awslogs-group: "haystack"
+       awslogs-create-group: "true"
+       awslogs-stream-prefix: "haystack-dev-log"
     environment:
       - API_ENDPOINT=http://haystack-api:8000
       - EVAL_FILE=eval_labels_example.csv
@@ -48,4 +88,9 @@ services:
       - DEFAULT_QUESTION_AT_STARTUP
       - DEFAULT_DOCS_FROM_RETRIEVER
       - DEFAULT_NUMBER_OF_ANSWERS
-    command: "/bin/bash -c 'sleep 15 && streamlit run webapp.py'"
+    command: "/bin/bash -c 'sleep 35 && streamlit run webapp.py'"
+
+# networks:
+#   haystack-network:
+#     driver: bridge # a user defined bridge is required; the default bridge network doesn't support name resolution
+
